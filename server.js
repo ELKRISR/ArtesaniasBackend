@@ -6,9 +6,11 @@ const app = require('./src/app');
 
 const PORT = process.env.PORT || 4000;
 
-const allowedOrigins = process.env.NODE_ENV === 'production'
-  ? (process.env.ALLOWED_ORIGINS ? process.env.ALLOWED_ORIGINS.split(',') : [])
-  : ['http://localhost:5173', 'http://localhost:3000'];
+const rawAllowedOrigins = process.env.ALLOWED_ORIGINS || '';
+const allowedOrigins = rawAllowedOrigins
+  .split(',')
+  .map((origin) => origin.trim())
+  .filter(Boolean);
 
 const server = http.createServer(app);
 
@@ -18,19 +20,18 @@ const io = new Server(server, {
       if (!origin) return callback(null, true);
 
       if (process.env.NODE_ENV !== 'production') {
-        if (allowedOrigins.indexOf(origin) !== -1 || origin.startsWith('http://localhost')) {
-          return callback(null, true);
-        }
-        console.warn(`[Socket.IO CORS] Origen no estándar en desarrollo: ${origin}`);
         return callback(null, true);
       }
 
-      if (allowedOrigins.indexOf(origin) !== -1) {
+      const isVercelOrigin = /vercel\.app$/.test(origin);
+      const isAllowed = isVercelOrigin || allowedOrigins.indexOf(origin) !== -1;
+      
+      if (isAllowed) {
         return callback(null, true);
       }
 
-      console.warn(`[Socket.IO CORS] 🔴 Bloqueado intento de acceso desde: ${origin}`);
-      callback(new Error('No permitido por política CORS'));
+      console.warn(`[Socket.IO CORS] Bloqueado: ${origin}`);
+      callback(new Error('CORS bloqueado'));
     },
     credentials: true,
     methods: ['GET', 'POST']

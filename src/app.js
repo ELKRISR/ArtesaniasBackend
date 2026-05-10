@@ -116,33 +116,33 @@ if (process.env.NODE_ENV === 'production') {
  * 🔒 CORS CONFIGURACIÓN SEGURA
  * ===================================================
  * En desarrollo: permite localhost:5173
- * En producción: solo dominios específicos en lista blanca
+ * En producción: permite todos los *.vercel.app + dominios en ALLOWED_ORIGINS
  */
-const allowedOrigins = process.env.NODE_ENV === 'production'
-  ? (process.env.ALLOWED_ORIGINS ? process.env.ALLOWED_ORIGINS.split(',') : [])
-  : ['http://localhost:5173', 'http://localhost:3000'];
+const rawAllowedOrigins = process.env.ALLOWED_ORIGINS || '';
+const allowedOrigins = rawAllowedOrigins
+  .split(',')
+  .map((origin) => origin.trim())
+  .filter(Boolean);
 
 app.use(cors({
   origin: function (origin, callback) {
-    // Permitir requests sin origin (como Postman, apps móviles)
     if (!origin) return callback(null, true);
     
-    // En desarrollo, permitir más flexibilidad
+    // En desarrollo: permitir TODO
     if (process.env.NODE_ENV !== 'production') {
-      if (allowedOrigins.indexOf(origin) !== -1 || origin.startsWith('http://localhost')) {
-        return callback(null, true);
-      }
-      console.warn(`[CORS] Origen no estándar en desarrollo: ${origin}`);
       return callback(null, true);
     }
+
+    // En producción: permitir Vercel + dominios configurados
+    const isVercelOrigin = /vercel\.app$/.test(origin);
+    const isAllowed = isVercelOrigin || allowedOrigins.indexOf(origin) !== -1;
     
-    // En producción: validación estricta
-    if (allowedOrigins.indexOf(origin) !== -1) {
-      callback(null, true);
-    } else {
-      console.warn(`[CORS] 🔴 Bloqueado intento de acceso desde: ${origin}`);
-      callback(new Error('No permitido por política CORS'));
+    if (isAllowed) {
+      return callback(null, true);
     }
+
+    console.warn(`[CORS] Bloqueado: ${origin}`);
+    callback(new Error('CORS bloqueado'));
   },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
