@@ -17,8 +17,9 @@ const crypto = require('crypto');
  * se controla con la propiedad `test: true` en el payload.
  */
 const BOLD_BASE_URL = process.env.BOLD_BASE_URL || 'https://api.bold.com';
+const BOLD_SANDBOX = String(process.env.BOLD_SANDBOX || '').trim().toLowerCase() === 'true';
 
-console.log(`Bold base URL: ${BOLD_BASE_URL} (sandbox=${process.env.BOLD_SANDBOX === 'true'})`);
+console.log(`Bold base URL: ${BOLD_BASE_URL} (sandbox=${BOLD_SANDBOX}, raw='${process.env.BOLD_SANDBOX}')`);
 
 /**
  * Crea una intención de pago en Bold
@@ -178,7 +179,7 @@ const buildPaymentIntent = (options) => {
     ...(returnUrl && { return_url: returnUrl }),
     ...(callbackUrl && { webhook_url: callbackUrl }),
     metadata,
-    test: process.env.BOLD_SANDBOX === 'true'
+    test: BOLD_SANDBOX
   };
 };
 
