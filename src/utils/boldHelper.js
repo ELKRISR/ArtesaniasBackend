@@ -1,4 +1,4 @@
-/**
+  /**
  * @fileoverview Utilidades para integración con Bold
  *
  * Bold es la nueva solución de pagos para LATAM, con API moderna y segura.
