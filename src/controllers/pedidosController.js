@@ -348,6 +348,16 @@ const crearPedidoBoldSession = async (req, res) => {
     // Generar referenceId único para Bold
     const referenceId = `pedido-${pedidoId}-${Date.now()}`;
     const frontendUrl = process.env.FRONTEND_URL || process.env.BACKEND_URL || "http://localhost:5173";
+    const backendUrl = process.env.BACKEND_URL || "http://localhost:4000";
+
+    if (process.env.NODE_ENV === 'production') {
+      if (!process.env.FRONTEND_URL) {
+        throw new Error('BACKEND_CONFIG_MISSING: FRONTEND_URL no está configurado');
+      }
+      if (!process.env.BACKEND_URL) {
+        throw new Error('BACKEND_CONFIG_MISSING: BACKEND_URL no está configurado');
+      }
+    }
 
     // Crear Payment Intent real en Bold
     try {
@@ -414,8 +424,9 @@ const crearPedidoBoldSession = async (req, res) => {
         message: boldError.message
       });
 
+      const boldStatus = boldError.response?.status || 500;
       const boldMessage = boldError.response?.data?.message || boldError.response?.data?.error || 'Error inicializando pago con Bold';
-      return errorResponse(res, boldMessage, 500);
+      return errorResponse(res, boldMessage, boldStatus);
     }
 
   } catch (error) {
@@ -743,12 +754,18 @@ const procesarPagoBold = async (req, res) => {
         process.env.BOLD_SECRET_KEY
       );
     } catch (boldError) {
-      console.error('Error en API de Bold:', boldError.response?.data);
+      console.error('Error en API de Bold:', {
+        status: boldError.response?.status,
+        headers: boldError.response?.headers,
+        data: boldError.response?.data,
+        message: boldError.message
+      });
       await connection.rollback();
+      const boldStatus = boldError.response?.status || 400;
       return errorResponse(
         res,
         boldError.response?.data?.message || 'Error procesando pago con Bold',
-        400
+        boldStatus
       );
     }
 

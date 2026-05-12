@@ -17,9 +17,14 @@ const crypto = require('crypto');
  * se controla con la propiedad `test: true` en el payload.
  */
 const BOLD_BASE_URL = process.env.BOLD_BASE_URL || 'https://api.bold.com';
+const BOLD_API_KEY = String(process.env.BOLD_API_KEY || '').trim();
 const BOLD_SANDBOX = String(process.env.BOLD_SANDBOX || '').trim().toLowerCase() === 'true';
 
 console.log(`Bold base URL: ${BOLD_BASE_URL} (sandbox=${BOLD_SANDBOX}, raw='${process.env.BOLD_SANDBOX}')`);
+console.log(`Bold credentials: secretKey=${Boolean(process.env.BOLD_SECRET_KEY)}, apiKey=${Boolean(BOLD_API_KEY)}`);
+if (process.env.NODE_ENV === 'production' && !BOLD_API_KEY) {
+  console.warn('[Bold] Advertencia: BOLD_API_KEY no está configurada en producción. Si Bold requiere x-api-key, las solicitudes pueden fallar con 403.');
+}
 
 /**
  * Crea una intención de pago en Bold
@@ -41,7 +46,8 @@ const createPaymentIntent = async (paymentIntent, secretKey) => {
           'Authorization': `Bearer ${secretKey}`,
           'Content-Type': 'application/json',
           'Accept': 'application/json',
-          'User-Agent': 'Artesanias-Bold-Integration/1.0'
+          'User-Agent': 'Artesanias-Bold-Integration/1.0',
+          ...(BOLD_API_KEY ? { 'x-api-key': BOLD_API_KEY } : {})
         }
       }
     );
@@ -76,7 +82,8 @@ const processPayment = async (paymentAttempt, secretKey) => {
           'Authorization': `Bearer ${secretKey}`,
           'Content-Type': 'application/json',
           'Accept': 'application/json',
-          'User-Agent': 'Artesanias-Bold-Integration/1.0'
+          'User-Agent': 'Artesanias-Bold-Integration/1.0',
+          ...(BOLD_API_KEY ? { 'x-api-key': BOLD_API_KEY } : {})
         }
       }
     );
@@ -109,7 +116,8 @@ const getPaymentStatus = async (paymentIntentReference, secretKey) => {
         headers: {
           'Authorization': `Bearer ${secretKey}`,
           'Content-Type': 'application/json',
-          'Accept': 'application/json'
+          'Accept': 'application/json',
+          ...(BOLD_API_KEY ? { 'x-api-key': BOLD_API_KEY } : {})
         }
       }
     );
