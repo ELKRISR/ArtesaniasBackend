@@ -37,10 +37,22 @@ const handleBoldWebhook = async (req, res) => {
       case 'payment.completed':
       case 'payment.approved':
         // Extraer información del pago
-        const { payment_intent_reference, status, id: transactionId } = data;
+        const {
+          payment_intent_reference,
+          reference,
+          link_reference,
+          status,
+          id: transactionId
+        } = data;
 
-        if (!payment_intent_reference) {
-          return errorResponse(res, "Payment intent reference requerido", 400);
+        const paymentReference =
+          payment_intent_reference ||
+          reference ||
+          link_reference ||
+          null;
+
+        if (!paymentReference) {
+          return errorResponse(res, "Referencia de pago Bold requerida", 400);
         }
 
         connection = await pool.getConnection();
@@ -49,8 +61,8 @@ const handleBoldWebhook = async (req, res) => {
         try {
           // Buscar la transacción en la BD
           const [transaction] = await connection.query(
-            `SELECT * FROM transacciones_bold WHERE payment_intent_reference = ?`,
-            [payment_intent_reference]
+            `SELECT * FROM transacciones_bold WHERE payment_intent_reference = ? OR reference_id = ?`,
+            [paymentReference, paymentReference]
           );
 
           if (!transaction || !transaction[0]) {
@@ -125,15 +137,23 @@ const handleBoldWebhook = async (req, res) => {
       case 'payment.failed':
       case 'payment.cancelled':
         // Manejar pago rechazado o cancelado
-        const failedPaymentReference = data.payment_intent_reference;
+        const failedPaymentReference =
+          data.payment_intent_reference ||
+          data.reference ||
+          data.link_reference ||
+          null;
+
+        if (!failedPaymentReference) {
+          return errorResponse(res, "Referencia de pago Bold requerida", 400);
+        }
 
         connection = await pool.getConnection();
         await connection.beginTransaction();
 
         try {
           const [transaction] = await connection.query(
-            `SELECT * FROM transacciones_bold WHERE payment_intent_reference = ?`,
-            [failedPaymentReference]
+            `SELECT * FROM transacciones_bold WHERE payment_intent_reference = ? OR reference_id = ?`,
+            [failedPaymentReference, failedPaymentReference]
           );
 
           if (transaction && transaction[0]) {

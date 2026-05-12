@@ -17,10 +17,11 @@ const crypto = require('crypto');
  * se controla con la propiedad `test: true` en el payload.
  */
 const BOLD_BASE_URL = process.env.BOLD_BASE_URL || 'https://api.bold.com';
+const BOLD_CHECKOUT_BASE_URL = process.env.BOLD_CHECKOUT_BASE_URL || 'https://checkout.bold.co';
 const BOLD_API_KEY = String(process.env.BOLD_API_KEY || '').trim();
 const BOLD_SANDBOX = String(process.env.BOLD_SANDBOX || '').trim().toLowerCase() === 'true';
 
-console.log(`Bold base URL: ${BOLD_BASE_URL} (sandbox=${BOLD_SANDBOX}, raw='${process.env.BOLD_SANDBOX}')`);
+console.log(`Bold base URL: ${BOLD_BASE_URL} (checkout=${BOLD_CHECKOUT_BASE_URL}, sandbox=${BOLD_SANDBOX}, raw='${process.env.BOLD_SANDBOX}')`);
 console.log(`Bold credentials: secretKey=${Boolean(process.env.BOLD_SECRET_KEY)}, apiKey=${Boolean(BOLD_API_KEY)}`);
 if (process.env.NODE_ENV === 'production' && !BOLD_API_KEY) {
   console.warn('[Bold] Advertencia: BOLD_API_KEY no está configurada en producción. Si Bold requiere x-api-key, las solicitudes pueden fallar con 403.');
@@ -60,6 +61,74 @@ const createPaymentIntent = async (paymentIntent, secretKey) => {
     });
     throw error;
   }
+};
+
+/**
+ * Crea un enlace de pago en Bold usando el checkout host
+ * @param {object} paymentLink - Datos de la sesión de pago
+ * @param {string} secretKey - Llave secreta de Bold
+ * @returns {Promise<object>} Respuesta de Bold con la URL de pago
+ */
+const createCheckoutLink = async (paymentLink, secretKey) => {
+  if (!secretKey) {
+    throw new Error('BOLD_SECRET_KEY no está configurada. Revisa backend/.env');
+  }
+
+  try {
+    const response = await axios.post(
+      `${BOLD_CHECKOUT_BASE_URL}/payment/v1/link`,
+      paymentLink,
+      {
+        headers: {
+          Authorization: `Bearer ${secretKey}`,
+          'Content-Type': 'application/json',
+          Accept: 'application/json',
+          'User-Agent': 'Artesanias-Bold-Integration/1.0',
+          ...(BOLD_API_KEY ? { 'x-api-key': BOLD_API_KEY } : {})
+        }
+      }
+    );
+    return response.data?.data || response.data;
+  } catch (error) {
+    console.error('Error creando enlace de pago en Bold:', {
+      status: error.response?.status,
+      data: error.response?.data,
+      message: error.message
+    });
+    throw error;
+  }
+};
+
+const buildCheckoutLinkPayload = (options) => {
+  const {
+    referenceId,
+    amount,
+    description,
+    callbackUrl,
+    customer,
+    metadata = {},
+    returnUrl = null
+  } = options;
+
+  return {
+    reference: referenceId,
+    amount_in_cents: Math.round(amount.total * 100),
+    currency: amount.currency || 'COP',
+    description,
+    customer: {
+      name: customer.name,
+      email: customer.email,
+      phone: customer.phone,
+      document: {
+        type: 'CC',
+        number: customer.documentNumber || '0'
+      }
+    },
+    ...(returnUrl && { return_url: returnUrl }),
+    ...(callbackUrl && { webhook_url: callbackUrl }),
+    metadata,
+    test: BOLD_SANDBOX
+  };
 };
 
 /**
@@ -220,10 +289,13 @@ const buildPaymentAttempt = (options) => {
 
 module.exports = {
   createPaymentIntent,
+  createCheckoutLink,
   processPayment,
   getPaymentStatus,
   validateWebhookSignature,
   buildPaymentIntent,
+  buildCheckoutLinkPayload,
   buildPaymentAttempt,
-  BOLD_BASE_URL
+  BOLD_BASE_URL,
+  BOLD_CHECKOUT_BASE_URL
 };

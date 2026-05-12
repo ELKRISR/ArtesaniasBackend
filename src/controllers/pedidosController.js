@@ -1,7 +1,14 @@
 const pool = require("../models/db");
 const { successResponse, errorResponse } = require("../utils/response");
 const PDFDocument = require("pdfkit");
-const { createPaymentIntent, processPayment, buildPaymentIntent, buildPaymentAttempt } = require("../utils/boldHelper");
+const {
+  createPaymentIntent,
+  createCheckoutLink,
+  processPayment,
+  buildPaymentIntent,
+  buildCheckoutLinkPayload,
+  buildPaymentAttempt
+} = require("../utils/boldHelper");
 const notificationService = require("../services/notificationService");
 const emailService = require("../services/emailService");
 
@@ -359,9 +366,9 @@ const crearPedidoBoldSession = async (req, res) => {
       }
     }
 
-    // Crear Payment Intent real en Bold
+    // Crear enlace de pago real en Bold
     try {
-      const paymentIntentPayload = buildPaymentIntent({
+      const paymentLinkPayload = buildCheckoutLinkPayload({
         referenceId,
         amount: {
           total,
@@ -382,28 +389,42 @@ const crearPedidoBoldSession = async (req, res) => {
         }
       });
 
-      const boldResponse = await createPaymentIntent(
-        paymentIntentPayload,
+      const boldResponse = await createCheckoutLink(
+        paymentLinkPayload,
         process.env.BOLD_SECRET_KEY
       );
 
-      const paymentIntentReference =
+      const paymentLinkReference =
         boldResponse.payment_intent_reference ||
         boldResponse.reference ||
         boldResponse.id ||
+        boldResponse.link_reference ||
         boldResponse.data?.payment_intent_reference ||
         boldResponse.data?.reference ||
+        boldResponse.data?.id ||
+        boldResponse.data?.link_reference ||
         null;
 
-      if (!paymentIntentReference) {
-        throw new Error('No se recibió referencia de pago de Bold');
+      const paymentUrl =
+        boldResponse.url ||
+        boldResponse.link ||
+        boldResponse.checkout_url ||
+        boldResponse.redirect_url ||
+        boldResponse.data?.url ||
+        boldResponse.data?.link ||
+        boldResponse.data?.checkout_url ||
+        boldResponse.data?.redirect_url ||
+        null;
+
+      if (!paymentUrl) {
+        throw new Error('No se recibió URL de pago de Bold');
       }
 
       await connection.query(
         `INSERT INTO transacciones_bold 
          (pedido_id, reference_id, payment_intent_reference, estado) 
          VALUES (?, ?, ?, ?)`,
-        [pedidoId, referenceId, paymentIntentReference, 'pending']
+        [pedidoId, referenceId, paymentLinkReference || referenceId, 'pending']
       );
 
       await connection.commit();
@@ -412,13 +433,13 @@ const crearPedidoBoldSession = async (req, res) => {
         pedidoId,
         total,
         referenceId,
-        paymentIntentReference,
-        paymentUrl: `${frontendUrl}/checkout/bold/${referenceId}`,
+        paymentIntentReference: paymentLinkReference,
+        paymentUrl,
       }, 201);
     } catch (boldError) {
       await connection.rollback();
 
-      console.error('Error creando Payment Intent en Bold:', {
+      console.error('Error creando enlace de pago en Bold:', {
         status: boldError.response?.status,
         data: boldError.response?.data,
         message: boldError.message
