@@ -358,6 +358,10 @@ router.patch(
  */
 
 
+/* =========================
+   🔴 RUTAS DE BOLD - COLOCADAS ANTES DE /:id PARA EVITAR INTERCEPTACIÓN
+   ========================= */
+
 /* =========================   OBTENER INTENCIÓN DE PAGO BOLD
 ========================= */
 router.get(
@@ -385,7 +389,7 @@ router.get(
 );
 
 
-/* =========================   OBTENER POR ID
+/* =========================   OBTENER POR ID (RUTA GENÉRICA - AL FINAL)
 ========================= */
 router.get(
   "/:id",
