@@ -17,6 +17,8 @@ const crypto = require('crypto');
  * se controla con la propiedad `test: true` en el payload.
  */
 const BOLD_BASE_URL = process.env.BOLD_BASE_URL || 'https://api.bold.com';
+// BOLD_CHECKOUT_BASE_URL debe usar checkout.bold.co para crear los enlaces de pago.
+// El host api.bold.com es para la API directa; checkout.bold.co es para el checkout link.
 const BOLD_CHECKOUT_BASE_URL = process.env.BOLD_CHECKOUT_BASE_URL || 'https://checkout.bold.co';
 const BOLD_API_KEY = String(process.env.BOLD_API_KEY || '').trim();
 const BOLD_SANDBOX = String(process.env.BOLD_SANDBOX || '').trim().toLowerCase() === 'true';
