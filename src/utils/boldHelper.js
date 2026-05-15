@@ -1,4 +1,4 @@
-  /**
+/**
  * @fileoverview Utilidades para integración con Bold
  *
  * Bold es la nueva solución de pagos para LATAM, con API moderna y segura.
@@ -7,8 +7,8 @@
  * @module utils/boldHelper
  */
 
-const axios = require('axios');
-const crypto = require('crypto');
+const axios = require("axios");
+const crypto = require("crypto");
 
 /**
  * URL base de la API de Bold.
@@ -16,17 +16,27 @@ const crypto = require('crypto');
  * Bold usa el mismo host para sandbox y producción. El modo sandbox
  * se controla con la propiedad `test: true` en el payload.
  */
-const BOLD_BASE_URL = process.env.BOLD_BASE_URL || 'https://api.bold.com';
+const BOLD_BASE_URL = process.env.BOLD_BASE_URL || "https://api.bold.com";
 // BOLD_CHECKOUT_BASE_URL debe usar checkout.bold.co para crear los enlaces de pago.
 // El host api.bold.com es para la API directa; checkout.bold.co es para el checkout link.
-const BOLD_CHECKOUT_BASE_URL = process.env.BOLD_CHECKOUT_BASE_URL || 'https://checkout.bold.co';
-const BOLD_API_KEY = String(process.env.BOLD_API_KEY || '').trim();
-const BOLD_SANDBOX = String(process.env.BOLD_SANDBOX || '').trim().toLowerCase() === 'true';
+const BOLD_CHECKOUT_BASE_URL =
+  process.env.BOLD_CHECKOUT_BASE_URL || "https://checkout.bold.co";
+const BOLD_API_KEY = String(process.env.BOLD_API_KEY || "").trim();
+const BOLD_SANDBOX =
+  String(process.env.BOLD_SANDBOX || "")
+    .trim()
+    .toLowerCase() === "true";
 
-console.log(`Bold base URL: ${BOLD_BASE_URL} (checkout=${BOLD_CHECKOUT_BASE_URL}, sandbox=${BOLD_SANDBOX}, raw='${process.env.BOLD_SANDBOX}')`);
-console.log(`Bold credentials: secretKey=${Boolean(process.env.BOLD_SECRET_KEY)}, apiKey=${Boolean(BOLD_API_KEY)}`);
-if (process.env.NODE_ENV === 'production' && !BOLD_API_KEY) {
-  console.warn('[Bold] Advertencia: BOLD_API_KEY no está configurada en producción. Si Bold requiere x-api-key, las solicitudes pueden fallar con 403.');
+console.log(
+  `Bold base URL: ${BOLD_BASE_URL} (checkout=${BOLD_CHECKOUT_BASE_URL}, sandbox=${BOLD_SANDBOX}, raw='${process.env.BOLD_SANDBOX}')`,
+);
+console.log(
+  `Bold credentials: secretKey=${Boolean(process.env.BOLD_SECRET_KEY)}, apiKey=${Boolean(BOLD_API_KEY)}`,
+);
+if (process.env.NODE_ENV === "production" && !BOLD_API_KEY) {
+  console.warn(
+    "[Bold] Advertencia: BOLD_API_KEY no está configurada en producción. Si Bold requiere x-api-key, las solicitudes pueden fallar con 403.",
+  );
 }
 
 /**
@@ -37,7 +47,7 @@ if (process.env.NODE_ENV === 'production' && !BOLD_API_KEY) {
  */
 const createPaymentIntent = async (paymentIntent, secretKey) => {
   if (!secretKey) {
-    throw new Error('BOLD_SECRET_KEY no está configurada. Revisa backend/.env');
+    throw new Error("BOLD_SECRET_KEY no está configurada. Revisa backend/.env");
   }
 
   try {
@@ -46,20 +56,20 @@ const createPaymentIntent = async (paymentIntent, secretKey) => {
       paymentIntent,
       {
         headers: {
-          'Authorization': `Bearer ${secretKey}`,
-          'Content-Type': 'application/json',
-          'Accept': 'application/json',
-          'User-Agent': 'Artesanias-Bold-Integration/1.0',
-          ...(BOLD_API_KEY ? { 'x-api-key': BOLD_API_KEY } : {})
-        }
-      }
+          Authorization: `Bearer ${secretKey}`,
+          "Content-Type": "application/json",
+          Accept: "application/json",
+          "User-Agent": "Artesanias-Bold-Integration/1.0",
+          ...(BOLD_API_KEY ? { "x-api-key": BOLD_API_KEY } : {}),
+        },
+      },
     );
     return response.data?.data || response.data;
   } catch (error) {
-    console.error('Error creando intención de pago en Bold:', {
+    console.error("Error creando intención de pago en Bold:", {
       status: error.response?.status,
       data: error.response?.data,
-      message: error.message
+      message: error.message,
     });
     throw error;
   }
@@ -73,63 +83,45 @@ const createPaymentIntent = async (paymentIntent, secretKey) => {
  */
 const createCheckoutLink = async (paymentLink, secretKey) => {
   if (!secretKey) {
-    throw new Error('BOLD_SECRET_KEY no está configurada. Revisa backend/.env');
+    throw new Error("BOLD_SECRET_KEY no está configurada. Revisa backend/.env");
   }
 
   try {
     const response = await axios.post(
-      `${BOLD_CHECKOUT_BASE_URL}/payment/v1/link`,
+      `${BOLD_BASE_URL}/online/link/v1`, // ← endpoint correcto
       paymentLink,
       {
         headers: {
-          Authorization: `Bearer ${secretKey}`,
-          'Content-Type': 'application/json',
-          Accept: 'application/json',
-          'User-Agent': 'Artesanias-Bold-Integration/1.0',
-          ...(BOLD_API_KEY ? { 'x-api-key': BOLD_API_KEY } : {})
-        }
-      }
+          Authorization: `x-api-key ${BOLD_API_KEY}`, // ← no Bearer, usa API key
+          "Content-Type": "application/json",
+          // ← elimina x-api-key duplicado y User-Agent
+        },
+      },
     );
     return response.data?.data || response.data;
   } catch (error) {
-    console.error('Error creando enlace de pago en Bold:', {
+    console.error("Error creando enlace de pago en Bold:", {
       status: error.response?.status,
       data: error.response?.data,
-      message: error.message
+      message: error.message,
     });
     throw error;
   }
 };
 
 const buildCheckoutLinkPayload = (options) => {
-  const {
-    referenceId,
-    amount,
-    description,
-    callbackUrl,
-    customer,
-    metadata = {},
-    returnUrl = null
-  } = options;
+  const { referenceId, amount, description, callbackUrl } = options;
 
   return {
-    reference: referenceId,
-    amount_in_cents: Math.round(amount.total * 100),
-    currency: amount.currency || 'COP',
-    description,
-    customer: {
-      name: customer.name,
-      email: customer.email,
-      phone: customer.phone,
-      document: {
-        type: 'CC',
-        number: customer.documentNumber || '0'
-      }
+    amount_type: "CLOSE", // ← obligatorio
+    amount: {
+      currency: amount.currency || "COP",
+      total_amount: Math.round(amount.total), // ← sin * 100, ya está en pesos
+      tip_amount: 0,
     },
-    ...(returnUrl && { return_url: returnUrl }),
-    ...(callbackUrl && { webhook_url: callbackUrl }),
-    metadata,
-    test: BOLD_SANDBOX
+    reference: referenceId,
+    description,
+    ...(callbackUrl && { callback_url: callbackUrl }), // ← no webhook_url
   };
 };
 
@@ -141,7 +133,7 @@ const buildCheckoutLinkPayload = (options) => {
  */
 const processPayment = async (paymentAttempt, secretKey) => {
   if (!secretKey) {
-    throw new Error('BOLD_SECRET_KEY no está configurada. Revisa backend/.env');
+    throw new Error("BOLD_SECRET_KEY no está configurada. Revisa backend/.env");
   }
 
   try {
@@ -150,20 +142,20 @@ const processPayment = async (paymentAttempt, secretKey) => {
       paymentAttempt,
       {
         headers: {
-          'Authorization': `Bearer ${secretKey}`,
-          'Content-Type': 'application/json',
-          'Accept': 'application/json',
-          'User-Agent': 'Artesanias-Bold-Integration/1.0',
-          ...(BOLD_API_KEY ? { 'x-api-key': BOLD_API_KEY } : {})
-        }
-      }
+          Authorization: `Bearer ${secretKey}`,
+          "Content-Type": "application/json",
+          Accept: "application/json",
+          "User-Agent": "Artesanias-Bold-Integration/1.0",
+          ...(BOLD_API_KEY ? { "x-api-key": BOLD_API_KEY } : {}),
+        },
+      },
     );
     return response.data?.data || response.data;
   } catch (error) {
-    console.error('Error procesando pago en Bold:', {
+    console.error("Error procesando pago en Bold:", {
       status: error.response?.status,
       data: error.response?.data,
-      message: error.message
+      message: error.message,
     });
     throw error;
   }
@@ -177,7 +169,7 @@ const processPayment = async (paymentAttempt, secretKey) => {
  */
 const getPaymentStatus = async (paymentIntentReference, secretKey) => {
   if (!secretKey) {
-    throw new Error('BOLD_SECRET_KEY no está configurada. Revisa backend/.env');
+    throw new Error("BOLD_SECRET_KEY no está configurada. Revisa backend/.env");
   }
 
   try {
@@ -185,19 +177,19 @@ const getPaymentStatus = async (paymentIntentReference, secretKey) => {
       `${BOLD_BASE_URL}/v1/payment_intent/${paymentIntentReference}`,
       {
         headers: {
-          'Authorization': `Bearer ${secretKey}`,
-          'Content-Type': 'application/json',
-          'Accept': 'application/json',
-          ...(BOLD_API_KEY ? { 'x-api-key': BOLD_API_KEY } : {})
-        }
-      }
+          Authorization: `Bearer ${secretKey}`,
+          "Content-Type": "application/json",
+          Accept: "application/json",
+          ...(BOLD_API_KEY ? { "x-api-key": BOLD_API_KEY } : {}),
+        },
+      },
     );
     return response.data?.data || response.data;
   } catch (error) {
-    console.error('Error consultando estado de pago en Bold:', {
+    console.error("Error consultando estado de pago en Bold:", {
       status: error.response?.status,
       data: error.response?.data,
-      message: error.message
+      message: error.message,
     });
     throw error;
   }
@@ -213,14 +205,12 @@ const getPaymentStatus = async (paymentIntentReference, secretKey) => {
 const validateWebhookSignature = (body, signature, secretKey) => {
   if (!signature || !secretKey) return false;
 
-  const bodyString = typeof body === 'string'
-    ? body
-    : JSON.stringify(body);
+  const bodyString = typeof body === "string" ? body : JSON.stringify(body);
 
   const hash = crypto
-    .createHmac('sha256', secretKey)
+    .createHmac("sha256", secretKey)
     .update(bodyString)
-    .digest('hex');
+    .digest("hex");
 
   return hash === signature;
 };
@@ -238,27 +228,27 @@ const buildPaymentIntent = (options) => {
     callbackUrl,
     customer,
     metadata = {},
-    returnUrl = null
+    returnUrl = null,
   } = options;
 
   return {
     reference: referenceId,
-    amount_in_cents: Math.round(amount.total * 100), // Bold trabaja en centavos
-    currency: amount.currency || 'COP',
+    amount_in_cents: Math.round(amount.total), // Bold trabaja en centavos
+    currency: amount.currency || "COP",
     description,
     customer: {
       name: customer.name,
       email: customer.email,
       phone: customer.phone,
       document: {
-        type: 'CC',
-        number: customer.documentNumber || '0'
-      }
+        type: "CC",
+        number: customer.documentNumber || "0",
+      },
     },
     ...(returnUrl && { return_url: returnUrl }),
     ...(callbackUrl && { webhook_url: callbackUrl }),
     metadata,
-    test: BOLD_SANDBOX
+    test: BOLD_SANDBOX,
   };
 };
 
@@ -268,24 +258,20 @@ const buildPaymentIntent = (options) => {
  * @returns {object} Objeto de intento de pago
  */
 const buildPaymentAttempt = (options) => {
-  const {
-    paymentIntentReference,
-    token,
-    payer
-  } = options;
+  const { paymentIntentReference, token, payer } = options;
 
   return {
     payment_intent_reference: paymentIntentReference,
     payment_source: {
-      type: 'CARD',
+      type: "CARD",
       card: {
-        token: token // Token del SDK de Bold
-      }
+        token: token, // Token del SDK de Bold
+      },
     },
     payer: {
       name: payer.name,
-      email: payer.email
-    }
+      email: payer.email,
+    },
   };
 };
 
@@ -299,5 +285,5 @@ module.exports = {
   buildCheckoutLinkPayload,
   buildPaymentAttempt,
   BOLD_BASE_URL,
-  BOLD_CHECKOUT_BASE_URL
+  BOLD_CHECKOUT_BASE_URL,
 };

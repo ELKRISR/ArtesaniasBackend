@@ -37,8 +37,8 @@
  * }
  */
 
-const mysql = require('mysql2/promise');
-require('dotenv').config();
+const mysql = require("mysql2/promise");
+require("dotenv").config();
 
 /**
  * Pool de conexiones a MySQL.
@@ -60,28 +60,35 @@ require('dotenv').config();
  */
 
 // Configurar puerto y SSL según el entorno
-const dbPort = process.env.NODE_ENV === 'production' 
-  ? (process.env.DB_PORT || 4000) // TiDB Cloud puerto 4000 en producción
-  : (process.env.DB_PORT || 3306); // MySQL puerto 3306 en desarrollo
+const dbPort =
+  process.env.NODE_ENV === "production"
+    ? process.env.DB_PORT || 4000 // TiDB Cloud puerto 4000 en producción
+    : process.env.DB_PORT || 3306; // MySQL puerto 3306 en desarrollo
 
-const dbSslConfig = process.env.NODE_ENV === 'production'
-  ? { require: true, rejectUnauthorized: true }
-  : undefined; // Sin SSL en desarrollo
+const dbSslConfig =
+  process.env.NODE_ENV === "production"
+    ? { require: true, rejectUnauthorized: true }
+    : undefined; // Sin SSL en desarrollo
 
 const poolConfig = {
-  host:     process.env.DB_HOST,
-  user:     process.env.DB_USER,
+  host: process.env.DB_HOST,
+  user: process.env.DB_USER,
   password: process.env.DB_PASS,
   database: process.env.DB_NAME,
-  port:     dbPort,
+  port: dbPort,
 
   // Gestión del pool
   waitForConnections: true,
-  connectionLimit:    10,
-  queueLimit:         0,
+  connectionLimit: 10,
+  queueLimit: 0,
 
+  // SSL en producción (TiDB Cloud requiere SSL obligatorio)
+  ssl: {
+    minVersion: "TLSv1.2",
+    rejectUnauthorized: true,
+  },
   // Fechas siempre en UTC — evita desfases horarios
-  timezone: '+00:00',
+  timezone: "+00:00",
 };
 
 // Agregar SSL solo si está configurado

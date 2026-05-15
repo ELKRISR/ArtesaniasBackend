@@ -1,5 +1,6 @@
 const pool = require("../models/db");
 const { successResponse, errorResponse } = require("../utils/response");
+const crypto = require("crypto");
 const PDFDocument = require("pdfkit");
 const {
   createPaymentIntent,
@@ -7,7 +8,7 @@ const {
   processPayment,
   buildPaymentIntent,
   buildCheckoutLinkPayload,
-  buildPaymentAttempt
+  buildPaymentAttempt,
 } = require("../utils/boldHelper");
 const notificationService = require("../services/notificationService");
 const emailService = require("../services/emailService");
@@ -84,7 +85,7 @@ const crearPedido = async (req, res) => {
 
       const [producto] = await connection.query(
         "SELECT precio, stock FROM productos WHERE id = ? FOR UPDATE",
-        [productoId]
+        [productoId],
       );
 
       if (producto.length === 0) {
@@ -102,13 +103,13 @@ const crearPedido = async (req, res) => {
 
       await connection.query(
         "UPDATE productos SET stock = stock - ? WHERE id = ?",
-        [cantidad, productoId]
+        [cantidad, productoId],
       );
     }
 
     const [pedidoResult] = await connection.query(
       "INSERT INTO pedidos (usuario_id, total, estado) VALUES (?, ?, ?)",
-      [usuarioId, total, "pendiente"]
+      [usuarioId, total, "pendiente"],
     );
 
     const pedidoId = pedidoResult.insertId;
@@ -118,12 +119,7 @@ const crearPedido = async (req, res) => {
         `INSERT INTO detalle_pedido 
          (pedido_id, producto_id, cantidad, precio_unitario)
          VALUES (?, ?, ?, ?)`,
-        [
-          pedidoId,
-          productoId,
-          itemsMap[productoId],
-          productosMap[productoId]
-        ]
+        [pedidoId, productoId, itemsMap[productoId], productosMap[productoId]],
       );
     }
 
@@ -131,15 +127,20 @@ const crearPedido = async (req, res) => {
       `INSERT INTO pedido_historial 
        (pedido_id, estado_anterior, estado_nuevo, cambiado_por)
        VALUES (?, ?, ?, ?)`,
-      [pedidoId, null, "pendiente", usuarioId]
+      [pedidoId, null, "pendiente", usuarioId],
     );
 
     await connection.commit();
 
     // Notificar a admins sobre nuevo pedido
     const [pedidoData] = await connection.query(
-      "SELECT p.id, p.total, u.nombre as nombre_cliente, u.email, COUNT(dp.id) as productos FROM pedidos p JOIN usuarios u ON p.usuario_id = u.id LEFT JOIN detalle_pedido dp ON p.id = dp.pedido_id WHERE p.id = ? GROUP BY p.id",
-      [pedidoId]
+      `SELECT p.id, p.total, u.nombre as nombre_cliente, u.email, COUNT(dp.id) as productos 
+   FROM pedidos p 
+   JOIN usuarios u ON p.usuario_id = u.id 
+   LEFT JOIN detalle_pedido dp ON p.id = dp.pedido_id 
+   WHERE p.id = ? 
+   GROUP BY p.id, p.total, u.nombre, u.email`,
+      [pedidoId],
     );
     notificationService.notifyNewOrder(pedidoData[0]);
 
@@ -147,29 +148,28 @@ const crearPedido = async (req, res) => {
     try {
       const [productos] = await connection.query(
         "SELECT dp.cantidad, dp.precio_unitario, pr.nombre FROM detalle_pedido dp JOIN productos pr ON dp.producto_id = pr.id WHERE dp.pedido_id = ?",
-        [pedidoId]
+        [pedidoId],
       );
       await emailService.sendOrderConfirmation(pedidoData[0].email, {
         id: pedidoData[0].id,
         cliente: pedidoData[0].nombre_cliente,
         total: pedidoData[0].total,
-        productos: productos.map(p => ({
+        productos: productos.map((p) => ({
           nombre: p.nombre,
           cantidad: p.cantidad,
-          precio: p.precio_unitario * p.cantidad
-        }))
+          precio: p.precio_unitario * p.cantidad,
+        })),
       });
     } catch (emailError) {
-      console.error('Error enviando email de confirmación:', emailError);
+      console.error("Error enviando email de confirmación:", emailError);
       // No fallar el pedido por error de email
     }
 
     return successResponse(res, {
       mensaje: "Pedido creado exitosamente",
       pedidoId,
-      total
+      total,
     });
-
   } catch (error) {
     if (connection) await connection.rollback();
     return errorResponse(res, error.message, 400);
@@ -177,7 +177,6 @@ const crearPedido = async (req, res) => {
     if (connection) connection.release();
   }
 };
-
 
 /* =========================
    PAGAR PEDIDO (CLIENTE)
@@ -198,7 +197,7 @@ const pagarPedido = async (req, res) => {
 
     const [pedidoRows] = await connection.query(
       "SELECT estado, usuario_id FROM pedidos WHERE id = ? FOR UPDATE",
-      [id]
+      [id],
     );
 
     if (pedidoRows.length === 0) {
@@ -219,12 +218,12 @@ const pagarPedido = async (req, res) => {
       `INSERT INTO pedido_historial
        (pedido_id, estado_anterior, estado_nuevo, cambiado_por)
        VALUES (?, ?, ?, ?)`,
-      [id, pedido.estado, "pagado", usuarioId]
+      [id, pedido.estado, "pagado", usuarioId],
     );
 
     await connection.query(
       "UPDATE pedidos SET estado = 'pagado' WHERE id = ?",
-      [id]
+      [id],
     );
 
     await connection.commit();
@@ -232,25 +231,30 @@ const pagarPedido = async (req, res) => {
     // Notificar pago recibido
     const [pedidoData] = await connection.query(
       "SELECT id, total, usuario_id FROM pedidos WHERE id = ?",
-      [id]
+      [id],
     );
-    notificationService.notifyPaymentReceived({ ...pedidoData[0], metodo_pago: 'efectivo' }); // Asumiendo efectivo por ahora
+    notificationService.notifyPaymentReceived({
+      ...pedidoData[0],
+      metodo_pago: "efectivo",
+    }); // Asumiendo efectivo por ahora
     // Enviar email de confirmación de pago
     try {
       const [userData] = await connection.query(
         "SELECT email FROM usuarios WHERE id = ?",
-        [pedidoData[0].usuario_id]
+        [pedidoData[0].usuario_id],
       );
       if (userData[0]?.email) {
-        await emailService.sendPaymentConfirmation(userData[0].email, pedidoData[0]);
+        await emailService.sendPaymentConfirmation(
+          userData[0].email,
+          pedidoData[0],
+        );
       }
     } catch (emailError) {
-      console.error('Error enviando email de pago:', emailError);
+      console.error("Error enviando email de pago:", emailError);
     }
     return successResponse(res, {
-      mensaje: "Pago realizado exitosamente"
+      mensaje: "Pago realizado exitosamente",
     });
-
   } catch (error) {
     if (connection) await connection.rollback();
     return errorResponse(res, error.message, 400);
@@ -267,22 +271,28 @@ const crearPedidoBoldSession = async (req, res) => {
   const { cliente, items } = req.body;
 
   // 🔍 DEBUG: Log del payload recibido
-  console.log('📦 Payload recibido en Bold Session:', {
+  console.log("📦 Payload recibido en Bold Session:", {
     usuarioId,
     cliente,
     items,
-    itemTypes: items?.map(item => ({ 
-      productoId: typeof item.productoId, 
+    itemTypes: items?.map((item) => ({
+      productoId: typeof item.productoId,
       cantidad: typeof item.cantidad,
-      values: item 
-    }))
+      values: item,
+    })),
   });
 
   if (!usuarioId) {
     return errorResponse(res, "Usuario no autenticado", 401);
   }
 
-  if (!cliente || !cliente.nombre || !cliente.email || !cliente.direccion || !cliente.telefono) {
+  if (
+    !cliente ||
+    !cliente.nombre ||
+    !cliente.email ||
+    !cliente.direccion ||
+    !cliente.telefono
+  ) {
     return errorResponse(res, "Datos de cliente incompletos", 400);
   }
 
@@ -297,7 +307,8 @@ const crearPedidoBoldSession = async (req, res) => {
       return errorResponse(res, "Producto o cantidad inválida", 400);
     }
 
-    itemsMap[item.productoId] = (itemsMap[item.productoId] || 0) + item.cantidad;
+    itemsMap[item.productoId] =
+      (itemsMap[item.productoId] || 0) + item.cantidad;
   }
 
   let connection;
@@ -314,7 +325,7 @@ const crearPedidoBoldSession = async (req, res) => {
 
       const [producto] = await connection.query(
         "SELECT id, nombre, precio, stock FROM productos WHERE id = ? FOR UPDATE",
-        [productoId]
+        [productoId],
       );
 
       if (producto.length === 0) {
@@ -332,13 +343,13 @@ const crearPedidoBoldSession = async (req, res) => {
 
       await connection.query(
         "UPDATE productos SET stock = stock - ? WHERE id = ?",
-        [cantidad, productoId]
+        [cantidad, productoId],
       );
     }
 
     const [pedidoResult] = await connection.query(
       "INSERT INTO pedidos (usuario_id, total, estado) VALUES (?, ?, ?)",
-      [usuarioId, total, "pendiente"]
+      [usuarioId, total, "pendiente"],
     );
 
     const pedidoId = pedidoResult.insertId;
@@ -348,21 +359,28 @@ const crearPedidoBoldSession = async (req, res) => {
         `INSERT INTO detalle_pedido 
          (pedido_id, producto_id, cantidad, precio_unitario)
          VALUES (?, ?, ?, ?)`,
-        [pedidoId, productoId, itemsMap[productoId], productosMap[productoId]]
+        [pedidoId, productoId, itemsMap[productoId], productosMap[productoId]],
       );
     }
 
     // Generar referenceId único para Bold
     const referenceId = `pedido-${pedidoId}-${Date.now()}`;
-    const frontendUrl = process.env.FRONTEND_URL || process.env.BACKEND_URL || "http://localhost:5173";
+    const frontendUrl =
+      process.env.FRONTEND_URL ||
+      process.env.BACKEND_URL ||
+      "http://localhost:5173";
     const backendUrl = process.env.BACKEND_URL || "http://localhost:4000";
 
-    if (process.env.NODE_ENV === 'production') {
+    if (process.env.NODE_ENV === "production") {
       if (!process.env.FRONTEND_URL) {
-        throw new Error('BACKEND_CONFIG_MISSING: FRONTEND_URL no está configurado');
+        throw new Error(
+          "BACKEND_CONFIG_MISSING: FRONTEND_URL no está configurado",
+        );
       }
       if (!process.env.BACKEND_URL) {
-        throw new Error('BACKEND_CONFIG_MISSING: BACKEND_URL no está configurado');
+        throw new Error(
+          "BACKEND_CONFIG_MISSING: BACKEND_URL no está configurado",
+        );
       }
     }
 
@@ -372,26 +390,25 @@ const crearPedidoBoldSession = async (req, res) => {
         referenceId,
         amount: {
           total,
-          currency: 'COP'
+          currency: "COP",
         },
         description: `Pedido #${pedidoId} - Artesanías Hecha con Amor`,
         customer: {
           name: cliente.nombre,
           email: cliente.email,
           phone: cliente.telefono,
-          documentNumber: '0'
+          documentNumber: "0",
         },
         returnUrl: `${frontendUrl}/success/${pedidoId}`,
         callbackUrl: `${process.env.BACKEND_URL || "http://localhost:4000"}/api/webhook/bold`,
         metadata: {
           pedidoId: pedidoId.toString(),
-          usuarioId: usuarioId.toString()
-        }
+          usuarioId: usuarioId.toString(),
+        },
       });
-
       const boldResponse = await createCheckoutLink(
         paymentLinkPayload,
-        process.env.BOLD_SECRET_KEY
+        process.env.BOLD_SECRET_KEY,
       );
 
       const paymentLinkReference =
@@ -404,8 +421,8 @@ const crearPedidoBoldSession = async (req, res) => {
         boldResponse.data?.id ||
         boldResponse.data?.link_reference ||
         null;
-
       const paymentUrl =
+        boldResponse.payload.payment_link ||
         boldResponse.url ||
         boldResponse.link ||
         boldResponse.checkout_url ||
@@ -415,44 +432,46 @@ const crearPedidoBoldSession = async (req, res) => {
         boldResponse.data?.checkout_url ||
         boldResponse.data?.redirect_url ||
         null;
-
       if (!paymentUrl) {
-        throw new Error('No se recibió URL de pago de Bold');
+        throw new Error("No se recibió URL de pago de Bold");
       }
-
       await connection.query(
         `INSERT INTO transacciones_bold 
          (pedido_id, reference_id, payment_intent_reference, estado) 
          VALUES (?, ?, ?, ?)`,
-        [pedidoId, referenceId, paymentLinkReference || referenceId, 'pending']
+        [pedidoId, referenceId, paymentLinkReference || referenceId, "pending"],
       );
-
       await connection.commit();
-
-      return successResponse(res, {
-        pedidoId,
-        total,
-        referenceId,
-        paymentIntentReference: paymentLinkReference,
-        paymentUrl,
-      }, 201);
+      return successResponse(
+        res,
+        {
+          pedidoId,
+          total,
+          referenceId,
+          paymentIntentReference: paymentLinkReference,
+          paymentUrl,
+        },
+        201,
+      );
     } catch (boldError) {
       await connection.rollback();
 
-      console.error('Error creando enlace de pago en Bold:', {
+      console.error("Error creando enlace de pago en Bold:", {
         status: boldError.response?.status,
         data: boldError.response?.data,
-        message: boldError.message
+        message: boldError.message,
       });
 
       const boldStatus = boldError.response?.status || 500;
-      const boldMessage = boldError.response?.data?.message || boldError.response?.data?.error || 'Error inicializando pago con Bold';
+      const boldMessage =
+        boldError.response?.data?.message ||
+        boldError.response?.data?.error ||
+        "Error inicializando pago con Bold";
       return errorResponse(res, boldMessage, boldStatus);
     }
-
   } catch (error) {
     if (connection) await connection.rollback();
-    console.error('Error creando sesión de pago en Bold:', error);
+    console.error("Error creando sesión de pago en Bold:", error);
     return errorResponse(res, error.message, 400);
   } finally {
     if (connection) connection.release();
@@ -467,16 +486,14 @@ const listarPedidos = async (req, res) => {
     const [rows] = await pool.query(
       `SELECT id, usuario_id, total, estado, fecha
        FROM pedidos
-       ORDER BY id DESC`
+       ORDER BY id DESC`,
     );
 
     return successResponse(res, rows);
-
   } catch (error) {
     return errorResponse(res, error.message, 500);
   }
 };
-
 
 /* =========================
    LISTAR MIS PEDIDOS
@@ -494,16 +511,14 @@ const listarMisPedidos = async (req, res) => {
        FROM pedidos
        WHERE usuario_id = ?
        ORDER BY id DESC`,
-      [usuarioId]
+      [usuarioId],
     );
 
     return successResponse(res, rows);
-
   } catch (error) {
     return errorResponse(res, error.message, 500);
   }
 };
-
 
 /* =========================
    OBTENER PEDIDO POR ID
@@ -538,19 +553,17 @@ const obtenerPedidoPorId = async (req, res) => {
        FROM detalle_pedido dp
        JOIN productos p ON dp.producto_id = p.id
        WHERE dp.pedido_id = ?`,
-      [id]
+      [id],
     );
 
     return successResponse(res, {
       ...pedido[0],
-      detalle
+      detalle,
     });
-
   } catch (error) {
     return errorResponse(res, error.message, 500);
   }
 };
-
 
 /* =========================
    CAMBIAR ESTADO (ADMIN)
@@ -570,7 +583,7 @@ const cambiarEstadoPedido = async (req, res) => {
     pendiente: ["pagado", "cancelado"],
     pagado: ["enviado", "cancelado"],
     enviado: [],
-    cancelado: []
+    cancelado: [],
   };
 
   let connection;
@@ -581,7 +594,7 @@ const cambiarEstadoPedido = async (req, res) => {
 
     const [pedidoRows] = await connection.query(
       "SELECT estado FROM pedidos WHERE id = ? FOR UPDATE",
-      [id]
+      [id],
     );
 
     if (pedidoRows.length === 0) {
@@ -597,13 +610,13 @@ const cambiarEstadoPedido = async (req, res) => {
     if (estado === "cancelado") {
       const [detalle] = await connection.query(
         "SELECT producto_id, cantidad FROM detalle_pedido WHERE pedido_id = ?",
-        [id]
+        [id],
       );
 
       for (const item of detalle) {
         await connection.query(
           "UPDATE productos SET stock = stock + ? WHERE id = ?",
-          [item.cantidad, item.producto_id]
+          [item.cantidad, item.producto_id],
         );
       }
     }
@@ -612,20 +625,19 @@ const cambiarEstadoPedido = async (req, res) => {
       `INSERT INTO pedido_historial 
        (pedido_id, estado_anterior, estado_nuevo, cambiado_por)
        VALUES (?, ?, ?, ?)`,
-      [id, estadoActual, estado, usuarioId]
+      [id, estadoActual, estado, usuarioId],
     );
 
-    await connection.query(
-      "UPDATE pedidos SET estado = ? WHERE id = ?",
-      [estado, id]
-    );
+    await connection.query("UPDATE pedidos SET estado = ? WHERE id = ?", [
+      estado,
+      id,
+    ]);
 
     await connection.commit();
 
     return successResponse(res, {
-      mensaje: "Estado actualizado correctamente"
+      mensaje: "Estado actualizado correctamente",
     });
-
   } catch (error) {
     if (connection) await connection.rollback();
     return errorResponse(res, error.message, 400);
@@ -648,7 +660,7 @@ const obtenerBoldPaymentIntent = async (req, res) => {
 
   try {
     // Extraer el ID del pedido del referenceId (formato: pedido-{id}-{timestamp})
-    const pedidoId = referenceId.split('-')[1];
+    const pedidoId = referenceId.split("-")[1];
 
     if (!pedidoId) {
       return errorResponse(res, "Reference ID inválido", 400);
@@ -656,7 +668,7 @@ const obtenerBoldPaymentIntent = async (req, res) => {
 
     const [pedido] = await pool.query(
       `SELECT id, total, estado, usuario_id FROM pedidos WHERE id = ?`,
-      [pedidoId]
+      [pedidoId],
     );
 
     if (pedido.length === 0) {
@@ -665,27 +677,39 @@ const obtenerBoldPaymentIntent = async (req, res) => {
 
     const pedidoData = pedido[0];
 
-    if (rol !== 'admin' && pedidoData.usuario_id !== usuarioId) {
+    if (rol !== "admin" && pedidoData.usuario_id !== usuarioId) {
       return errorResponse(res, "No autorizado", 403);
     }
 
-    const totalAmount = Math.round(pedidoData.total * 100); // Convertir a centavos para Bold
+    const totalAmount = Math.round(pedidoData.total).toString(); // Convertir a centavos para Bold
+    // =========================================================
+    // GENERAR FIRMA DE INTEGRIDAD
+    // =========================================================
+
+    // STRING PARA HASH
+    const cadena = `${referenceId}${totalAmount.toString()}COP${process.env.BOLD_SECRET_KEY}`;
+
+    // GENERAR SHA256
+    const integritySignature = crypto
+      .createHash("sha256")
+      .update(cadena)
+      .digest("hex");
 
     return successResponse(res, {
       reference_id: referenceId,
       amount: {
-        total_amount: totalAmount,
-        currency: 'COP',
+        totalAmount,
+        currency: "COP",
         tip_amount: 0,
-        taxes: []
+        taxes: [],
       },
       description: `Pedido #${pedidoData.id} - Artesanías`,
       pedidoId: pedidoData.id,
-      estado: pedidoData.estado
+      estado: pedidoData.estado,
+      integritySignature,
     });
-
   } catch (error) {
-    console.error('Error obteniendo intención de pago Bold:', error);
+    console.error("Error obteniendo intención de pago Bold:", error);
     return errorResponse(res, error.message, 500);
   }
 };
@@ -712,11 +736,11 @@ const procesarPagoBold = async (req, res) => {
     await connection.beginTransaction();
 
     // Extraer el ID del pedido del referenceId
-    const pedidoId = referenceId.split('-')[1];
+    const pedidoId = referenceId.split("-")[1];
 
     const [pedido] = await connection.query(
       `SELECT id, usuario_id, total, estado FROM pedidos WHERE id = ? FOR UPDATE`,
-      [pedidoId]
+      [pedidoId],
     );
 
     if (pedido.length === 0) {
@@ -731,19 +755,23 @@ const procesarPagoBold = async (req, res) => {
     }
 
     // Verificar que el pago no sea duplicado
-    if (pedidoData.estado === 'pagado') {
+    if (pedidoData.estado === "pagado") {
       await connection.commit();
-      return successResponse(res, {
-        mensaje: "Pedido ya fue pagado",
-        pedidoId: pedidoData.id,
-        estado: 'pagado'
-      }, 200);
+      return successResponse(
+        res,
+        {
+          mensaje: "Pedido ya fue pagado",
+          pedidoId: pedidoData.id,
+          estado: "pagado",
+        },
+        200,
+      );
     }
 
     // Obtener detalles de la transacción Bold
     const [transaction] = await connection.query(
       `SELECT payment_intent_reference FROM transacciones_bold WHERE reference_id = ?`,
-      [referenceId]
+      [referenceId],
     );
 
     if (!transaction || !transaction[0]?.payment_intent_reference) {
@@ -753,40 +781,40 @@ const procesarPagoBold = async (req, res) => {
     // Obtener email del usuario para el pago
     const [usuarioRows] = await connection.query(
       "SELECT email FROM usuarios WHERE id = ?",
-      [usuarioId]
+      [usuarioId],
     );
-    const userEmail = usuarioRows[0]?.email || 'cliente@example.com';
+    const userEmail = usuarioRows[0]?.email || "cliente@example.com";
 
     // Procesar el pago con Bold usando el token
     const paymentAttempt = buildPaymentAttempt({
       paymentIntentReference: transaction[0].payment_intent_reference,
       token: token,
       payer: {
-        name: 'Cliente',
+        name: "Cliente",
         email: userEmail,
-        phone: '0'
-      }
+        phone: "0",
+      },
     });
 
     let boldPaymentResponse;
     try {
       boldPaymentResponse = await processPayment(
         paymentAttempt,
-        process.env.BOLD_SECRET_KEY
+        process.env.BOLD_SECRET_KEY,
       );
     } catch (boldError) {
-      console.error('Error en API de Bold:', {
+      console.error("Error en API de Bold:", {
         status: boldError.response?.status,
         headers: boldError.response?.headers,
         data: boldError.response?.data,
-        message: boldError.message
+        message: boldError.message,
       });
       await connection.rollback();
       const boldStatus = boldError.response?.status || 400;
       return errorResponse(
         res,
-        boldError.response?.data?.message || 'Error procesando pago con Bold',
-        boldStatus
+        boldError.response?.data?.message || "Error procesando pago con Bold",
+        boldStatus,
       );
     }
 
@@ -797,20 +825,20 @@ const procesarPagoBold = async (req, res) => {
       boldPaymentResponse.payment_status ||
       null;
 
-    if (paymentStatus !== 'APPROVED' && paymentStatus !== 'SUCCESS') {
+    if (paymentStatus !== "APPROVED" && paymentStatus !== "SUCCESS") {
       await connection.rollback();
       return errorResponse(
         res,
-        `Pago rechazado: ${paymentStatus || 'estado desconocido'}`,
-        400
+        `Pago rechazado: ${paymentStatus || "estado desconocido"}`,
+        400,
       );
     }
 
     // Actualizar estado del pedido a pagado
-    await connection.query(
-      "UPDATE pedidos SET estado = ? WHERE id = ?",
-      ['pagado', pedidoData.id]
-    );
+    await connection.query("UPDATE pedidos SET estado = ? WHERE id = ?", [
+      "pagado",
+      pedidoData.id,
+    ]);
 
     // Actualizar transacción Bold
     const transactionId =
@@ -824,7 +852,12 @@ const procesarPagoBold = async (req, res) => {
       `UPDATE transacciones_bold 
        SET estado = ?, transaction_id = ?, respuesta_bold = ? 
        WHERE reference_id = ?`,
-      ['completed', transactionId, JSON.stringify(boldPaymentResponse), referenceId]
+      [
+        "completed",
+        transactionId,
+        JSON.stringify(boldPaymentResponse),
+        referenceId,
+      ],
     );
 
     // Registrar en historial
@@ -832,7 +865,7 @@ const procesarPagoBold = async (req, res) => {
       `INSERT INTO pedido_historial 
        (pedido_id, estado_anterior, estado_nuevo, cambiado_por)
        VALUES (?, ?, ?, ?)`,
-      [pedidoData.id, 'pendiente', 'pagado', usuarioId]
+      [pedidoData.id, "pendiente", "pagado", usuarioId],
     );
 
     await connection.commit();
@@ -840,35 +873,41 @@ const procesarPagoBold = async (req, res) => {
     // Notificaciones
     const [userData] = await pool.query(
       "SELECT email FROM usuarios WHERE id = ?",
-      [pedidoData.usuario_id]
+      [pedidoData.usuario_id],
     );
 
     notificationService.notifyPaymentReceived({
       ...pedidoData,
-      metodo_pago: 'tarjeta',
-      transaction_id: boldPaymentResponse.id
+      metodo_pago: "tarjeta",
+      transaction_id: boldPaymentResponse.id,
     });
 
     // Enviar email de confirmación
     try {
       if (userData[0]?.email) {
-        await emailService.sendPaymentConfirmation(userData[0].email, pedidoData);
+        await emailService.sendPaymentConfirmation(
+          userData[0].email,
+          pedidoData,
+        );
       }
     } catch (emailError) {
-      console.error('Error enviando email:', emailError);
+      console.error("Error enviando email:", emailError);
     }
 
-    return successResponse(res, {
-      mensaje: "Pago procesado exitosamente",
-      pedidoId: pedidoData.id,
-      estado: 'pagado',
-      transactionId: boldPaymentResponse.id,
-      boldResponse: boldPaymentResponse
-    }, 200);
-
+    return successResponse(
+      res,
+      {
+        mensaje: "Pago procesado exitosamente",
+        pedidoId: pedidoData.id,
+        estado: "pagado",
+        transactionId: boldPaymentResponse.id,
+        boldResponse: boldPaymentResponse,
+      },
+      200,
+    );
   } catch (error) {
     if (connection) await connection.rollback();
-    console.error('Error procesando pago Bold:', error);
+    console.error("Error procesando pago Bold:", error);
     return errorResponse(res, error.message, 500);
   } finally {
     if (connection) connection.release();
@@ -889,7 +928,7 @@ const obtenerEstadoPagoBold = async (req, res) => {
 
   try {
     // Extraer el ID del pedido del referenceId
-    const pedidoId = referenceId.split('-')[1];
+    const pedidoId = referenceId.split("-")[1];
 
     if (!pedidoId) {
       return errorResponse(res, "Reference ID inválido", 400);
@@ -897,7 +936,7 @@ const obtenerEstadoPagoBold = async (req, res) => {
 
     const [pedido] = await pool.query(
       `SELECT id, total, estado, usuario_id, fecha FROM pedidos WHERE id = ?`,
-      [pedidoId]
+      [pedidoId],
     );
 
     if (pedido.length === 0) {
@@ -906,7 +945,7 @@ const obtenerEstadoPagoBold = async (req, res) => {
 
     const pedidoData = pedido[0];
 
-    if (rol !== 'admin' && pedidoData.usuario_id !== usuarioId) {
+    if (rol !== "admin" && pedidoData.usuario_id !== usuarioId) {
       return errorResponse(res, "No autorizado", 403);
     }
 
@@ -915,11 +954,10 @@ const obtenerEstadoPagoBold = async (req, res) => {
       pedidoId: pedidoData.id,
       estado: pedidoData.estado,
       total: pedidoData.total,
-      fecha: pedidoData.fecha
+      fecha: pedidoData.fecha,
     });
-
   } catch (error) {
-    console.error('Error obteniendo estado de pago Bold:', error);
+    console.error("Error obteniendo estado de pago Bold:", error);
     return errorResponse(res, error.message, 500);
   }
 };
