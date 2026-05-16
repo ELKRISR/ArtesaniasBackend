@@ -9,7 +9,6 @@
  * Swagger
  * Manejo de errores
  */
-console.log("🔥 VERSION NUEVA 123456");
 require("dotenv").config();
 
 const express = require("express");
