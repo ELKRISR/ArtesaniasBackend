@@ -9,7 +9,7 @@
  * Swagger
  * Manejo de errores
  */
-
+console.log("🔥 VERSION NUEVA 123456");
 require("dotenv").config();
 
 const express = require("express");
@@ -45,8 +45,8 @@ const globalLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 100,
   message: {
-    error: "Demasiadas peticiones, intenta más tarde"
-  }
+    error: "Demasiadas peticiones, intenta más tarde",
+  },
 });
 
 app.use(globalLimiter);
@@ -59,8 +59,8 @@ const loginLimiter = rateLimit({
   windowMs: 10 * 60 * 1000,
   max: 5,
   message: {
-    error: "Demasiados intentos de login. Intenta más tarde."
-  }
+    error: "Demasiados intentos de login. Intenta más tarde.",
+  },
 });
 
 /**
@@ -74,8 +74,8 @@ const refreshLimiter = rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
   message: {
-    error: "Demasiados intentos de refresh. Intenta más tarde."
-  }
+    error: "Demasiados intentos de refresh. Intenta más tarde.",
+  },
 });
 
 /**
@@ -86,8 +86,8 @@ const registerLimiter = rateLimit({
   windowMs: 60 * 60 * 1000, // 1 hora
   max: 5,
   message: {
-    error: "Demasiados intentos de registro. Intenta más tarde."
-  }
+    error: "Demasiados intentos de registro. Intenta más tarde.",
+  },
 });
 
 /* ===================================================
@@ -97,7 +97,7 @@ const registerLimiter = rateLimit({
    En producción: formato "combined" (estándar Apache, para análisis)
 */
 
-if (process.env.NODE_ENV === 'production') {
+if (process.env.NODE_ENV === "production") {
   // "combined" genera: IP - - [fecha] "Método Ruta" código bytes
   // Ejemplo: 192.168.1.1 - - [17/Apr/2026:10:00:00] "GET /api/productos" 200 1523
   app.use(morgan("combined"));
@@ -118,38 +118,46 @@ if (process.env.NODE_ENV === 'production') {
  * En desarrollo: permite localhost:5173
  * En producción: permite todos los *.vercel.app + dominios en ALLOWED_ORIGINS
  */
-const rawAllowedOrigins = process.env.ALLOWED_ORIGINS || '';
+const rawAllowedOrigins = process.env.ALLOWED_ORIGINS || "";
 const allowedOrigins = rawAllowedOrigins
-  .split(',')
+  .split(",")
   .map((origin) => origin.trim())
   .filter(Boolean);
 
-app.use(cors({
-  origin: function (origin, callback) {
-    if (!origin) return callback(null, true);
-    
-    // En desarrollo: permitir TODO
-    if (process.env.NODE_ENV !== 'production') {
-      return callback(null, true);
-    }
+app.use(
+  cors({
+    origin: function (origin, callback) {
+      if (!origin) return callback(null, true);
 
-    // En producción: permitir Vercel + dominios configurados
-    const isVercelOrigin = /vercel\.app$/.test(origin);
-    const isAllowed = isVercelOrigin || allowedOrigins.indexOf(origin) !== -1;
-    
-    if (isAllowed) {
-      return callback(null, true);
-    }
+      // En desarrollo: permitir TODO
+      if (process.env.NODE_ENV !== "production") {
+        return callback(null, true);
+      }
 
-    console.warn(`[CORS] Bloqueado: ${origin}`);
-    callback(new Error('CORS bloqueado'));
-  },
-  credentials: true,
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Cookie', 'X-CSRF-Token'],
-  exposedHeaders: ['Set-Cookie'],
-  maxAge: 86400,
-}));
+      // En producción: permitir Vercel + dominios configurados
+      const isVercelOrigin = /vercel\.app$/.test(origin);
+      const isAllowed = isVercelOrigin || allowedOrigins.indexOf(origin) !== -1;
+
+      if (isAllowed) {
+        return callback(null, true);
+      }
+
+      console.warn(`[CORS] Bloqueado: ${origin}`);
+      callback(new Error("CORS bloqueado"));
+    },
+    credentials: true,
+    methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
+    allowedHeaders: [
+      "Content-Type",
+      "Authorization",
+      "X-Requested-With",
+      "Cookie",
+      "X-CSRF-Token",
+    ],
+    exposedHeaders: ["Set-Cookie"],
+    maxAge: 86400,
+  }),
+);
 
 /* ===================================================
    🔒 LIMITACIÓN DE TAMAÑO DE PAYLOAD (PREVENIR DoS)
@@ -165,18 +173,20 @@ app.use(cors({
 */
 
 // Límite para JSON (body de API REST)
-app.use(express.json({
-  limit: '10kb',
-  verify: (req, res, buf) => {
-    // Guardar el body crudo para validar firmas de webhooks
-    if (req.originalUrl.startsWith('/api/webhook/bold')) {
-      req.rawBody = buf.toString('utf8');
-    }
-  }
-}));
+app.use(
+  express.json({
+    limit: "10kb",
+    verify: (req, res, buf) => {
+      // Guardar el body crudo para validar firmas de webhooks
+      if (req.originalUrl.startsWith("/api/webhook/bold")) {
+        req.rawBody = buf.toString("utf8");
+      }
+    },
+  }),
+);
 
 // Límite para datos URL-encoded (formularios tradicionales)
-app.use(express.urlencoded({ extended: true, limit: '10kb' }));
+app.use(express.urlencoded({ extended: true, limit: "10kb" }));
 
 // Cookie parser no necesita límite específico (las cookies tienen límite propio)
 app.use(cookieParser());
@@ -196,22 +206,22 @@ app.use(sanitizeMiddleware);
    - Reduce la superficie de ataque (información de sistema)
 */
 
-app.get('/health', (req, res) => {
-  const isProduction = process.env.NODE_ENV === 'production';
-  
+app.get("/health", (req, res) => {
+  const isProduction = process.env.NODE_ENV === "production";
+
   // Respuesta base (siempre presente)
   const healthResponse = {
-    status: 'OK',
+    status: "OK",
     timestamp: new Date().toISOString(),
   };
-  
+
   // En desarrollo: agregar información adicional útil
   if (!isProduction) {
     healthResponse.uptime = process.uptime();
-    healthResponse.environment = process.env.NODE_ENV || 'development';
-    healthResponse.version = '1.0.0';
+    healthResponse.environment = process.env.NODE_ENV || "development";
+    healthResponse.version = "1.0.0";
   }
-  
+
   res.status(200).json(healthResponse);
 });
 
@@ -277,24 +287,24 @@ app.use("/api/webhook", webhookRoutes);
 
 /**
  * Estrategia de seguridad para Swagger:
- * 
+ *
  * ┌─────────────────┬────────────────────────────────────┐
  * │ Entorno         │ Configuración                      │
  * ├─────────────────┼────────────────────────────────────┤
  * │ Desarrollo      │ Sin autenticación (fácil acceso)   │
  * │ Producción      │ Con autenticación básica           │
  * └─────────────────┴────────────────────────────────────┘
- * 
+ *
  * Credenciales por defecto (CAMBIAR EN PRODUCCIÓN):
  *   Usuario: admin
  *   Contraseña: cambiar123
- * 
+ *
  * Configurar en .env:
  *   SWAGGER_USER=empresario
  *   SWAGGER_PASS=contraseñaSegura123
  */
 
-if (process.env.NODE_ENV === 'production') {
+if (process.env.NODE_ENV === "production") {
   // Producción: Swagger protegido con autenticación básica
   app.use(
     "/api-docs",
@@ -303,12 +313,12 @@ if (process.env.NODE_ENV === 'production') {
     swaggerUi.setup(swaggerSpec, {
       swaggerOptions: {
         persistAuthorization: true,
-        docExpansion: 'none',
+        docExpansion: "none",
         filter: true,
       },
-      customCss: '.swagger-ui .topbar { display: none }',
-      customSiteTitle: 'API Artesanías - Documentación (Protegida)',
-    })
+      customCss: ".swagger-ui .topbar { display: none }",
+      customSiteTitle: "API Artesanías - Documentación (Protegida)",
+    }),
   );
   console.log("🔒 Swagger protegido con autenticación básica (producción)");
 } else {
@@ -319,12 +329,12 @@ if (process.env.NODE_ENV === 'production') {
     swaggerUi.setup(swaggerSpec, {
       swaggerOptions: {
         persistAuthorization: true,
-        docExpansion: 'none',
+        docExpansion: "none",
         filter: true,
       },
-      customCss: '.swagger-ui .topbar { display: none }',
-      customSiteTitle: 'API Artesanías - Documentación (Desarrollo)',
-    })
+      customCss: ".swagger-ui .topbar { display: none }",
+      customSiteTitle: "API Artesanías - Documentación (Desarrollo)",
+    }),
   );
   console.log("📚 Swagger habilitado sin autenticación (solo desarrollo)");
 }
@@ -335,7 +345,7 @@ if (process.env.NODE_ENV === 'production') {
 
 app.use((req, res) => {
   res.status(404).json({
-    error: "Ruta no encontrada"
+    error: "Ruta no encontrada",
   });
 });
 
