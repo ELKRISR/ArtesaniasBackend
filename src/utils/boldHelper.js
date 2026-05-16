@@ -87,6 +87,18 @@ const createCheckoutLink = async (paymentLink, secretKey) => {
   }
 
   try {
+    console.log(
+      "BOLD_BASE_URL",
+      `${BOLD_BASE_URL}/online/link/v1`, // ← endpoint correcto
+      paymentLink,
+      {
+        headers: {
+          "x-api-key": ` ${BOLD_API_KEY}`, // ← no Bearer, usa API key
+          "Content-Type": "application/json",
+          // ← elimina x-api-key duplicado y User-Agent
+        },
+      },
+    );
     const response = await axios.post(
       `${BOLD_BASE_URL}/online/link/v1`, // ← endpoint correcto
       paymentLink,
