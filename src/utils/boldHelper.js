@@ -92,7 +92,7 @@ const createCheckoutLink = async (paymentLink, secretKey) => {
       paymentLink,
       {
         headers: {
-          Authorization: `x-api-key ${BOLD_API_KEY}`, // ← no Bearer, usa API key
+          "x-api-key": ` ${BOLD_API_KEY}`, // ← no Bearer, usa API key
           "Content-Type": "application/json",
           // ← elimina x-api-key duplicado y User-Agent
         },
@@ -100,7 +100,7 @@ const createCheckoutLink = async (paymentLink, secretKey) => {
     );
     return response.data?.data || response.data;
   } catch (error) {
-    console.error("Error creando enlace de pago en Bold:", {
+    console.error("Error creando enlace de pago en Bold (checkout):", {
       status: error.response?.status,
       data: error.response?.data,
       message: error.message,
