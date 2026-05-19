@@ -122,41 +122,15 @@ const allowedOrigins = rawAllowedOrigins
   .split(",")
   .map((origin) => origin.trim())
   .filter(Boolean);
+app.use(cors({
+  origin: [
+    "http://localhost:5173",
+    "http://localhost:5174",
+    "http://localhost:5175"
+  ],
+  credentials: true
+}));
 
-app.use(
-  cors({
-    origin: function (origin, callback) {
-      if (!origin) return callback(null, true);
-
-      // En desarrollo: permitir TODO
-      if (process.env.NODE_ENV !== "production") {
-        return callback(null, true);
-      }
-
-      // En producción: permitir Vercel + dominios configurados
-      const isVercelOrigin = /vercel\.app$/.test(origin);
-      const isAllowed = isVercelOrigin || allowedOrigins.indexOf(origin) !== -1;
-
-      if (isAllowed) {
-        return callback(null, true);
-      }
-
-      console.warn(`[CORS] Bloqueado: ${origin}`);
-      callback(new Error("CORS bloqueado"));
-    },
-    credentials: true,
-    methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
-    allowedHeaders: [
-      "Content-Type",
-      "Authorization",
-      "X-Requested-With",
-      "Cookie",
-      "X-CSRF-Token",
-    ],
-    exposedHeaders: ["Set-Cookie"],
-    maxAge: 86400,
-  }),
-);
 
 /* ===================================================
    🔒 LIMITACIÓN DE TAMAÑO DE PAYLOAD (PREVENIR DoS)
